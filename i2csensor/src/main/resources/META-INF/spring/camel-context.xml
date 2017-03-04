@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:jolokia="http://www.jolokia.org/jolokia-spring/schema/config"
+       xsi:schemaLocation="
+          http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
+          http://camel.apache.org/schema/spring http://camel.apache.org/schema/spring/camel-spring.xsd
+          http://www.jolokia.org/jolokia-spring/schema/config http://www.jolokia.org/jolokia-spring/schema/config/jolokia-config.xsd">
+   <bean id="sensorDataProcessor" class="io.silverspoon.demos.jbug.SensorDataProcessor">
+
+   </bean>
+
+   <jolokia:agent lookupConfig="false" systemPropertiesMode="never">
+      <jolokia:config autoStart="true" host="0.0.0.0" port="8778" />
+   </jolokia:agent>
+
+<camelContext trace="true" xmlns="http://camel.apache.org/schema/spring">
+   <restConfiguration bindingMode="auto" component="jetty" port="8082" />
+   <rest path="/rest">
+      <post uri="/led/on">
+            <to uri="bulldog:gpio?pin=P8_7&amp;value=high" />
+      </post>
+      <post uri="/led/off">
+         <to uri="bulldog:gpio?pin=P8_7&amp;value=low" />
+      </post>
+      <get uri="/sensor">
+         <route>
+            <setHeader headerName="address">
+               <simple>0x43</simple>
+            </setHeader>
+            <setBody>
+               <simple></simple>
+            </setBody>
+            <to uri="bulldog:i2c?readLength=2" />
+            <process ref="sensorDataProcessor" />
+         </route>
+      </get>
+   </rest>
+   <route >
+      <from uri="timer:sensorTimer?period=2000" />
+      <setHeader headerName="address">
+         <simple>0x43</simple>
+      </setHeader>
+      <setBody>
+         <simple></simple>
+      </setBody>
+      <to uri="bulldog:i2c?readLength=2" />
+      <process ref="sensorDataProcessor" />
+      <marshal>
+         <json library="Jackson" prettyPrint="true" />
+      </marshal>
+      <to uri="mqtt:amq?publishTopicName=sensor&amp;userName=mqtt&amp;password=mqtt&amp;host=tcp://192.168.1.105:1883" />
+   </route>
+</camelContext>
+</beans>
